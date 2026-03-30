@@ -37,8 +37,14 @@ For each experiment found, read both `idea.md` and `metrics.md` (if they exist) 
 
 Compile into a concise experiment history summary. If no past experiments exist, note: "This is the first round of experiments."
 
-## Step 2: Ask Focus Area
+## Step 2: Determine Focus Area
 
+### Non-interactive mode (called from /auto-experiment):
+If `$FOCUS_AREA` is already set by the caller, use it directly — skip the AskUserQuestion. Also check for `$AUTO_MODE` flag; if set, the entire command runs without user interaction (no AskUserQuestion anywhere, auto-select top idea in Step 5).
+
+If `$LESSONS_LEARNED` is provided by the caller, include it as additional context for the analysis agents in Step 3 — this contains failed approaches from prior auto-experiment cycles that should NOT be repeated.
+
+### Interactive mode (default):
 Use AskUserQuestion:
 - question: "What aspect of your system do you most want to improve?"
 - header: "Focus area"
@@ -49,7 +55,9 @@ Use AskUserQuestion:
   - Cost reduction (Make the system cheaper to run)
   - Reliability / error handling (Make the system more robust)
 
-The user can also choose "Other" for a custom focus. Store the response as `focus_area`.
+The user can also choose "Other" for a custom focus.
+
+Store the response as `focus_area`.
 
 If the user provides additional context with their answer, note it for the analysis agents.
 
@@ -131,7 +139,14 @@ From the combined output of both agents and web research, synthesize **3-5 exper
 
 ## Step 5: Present & Select
 
-### 5a. Present the ranked list
+### Non-interactive mode (when $AUTO_MODE is set):
+Skip all user interaction. Return the **top-ranked idea** directly — its title, hypothesis, approach, expected impact. This is used by `/auto-experiment` to automatically feed the idea into the experiment implementation step.
+
+Do NOT present the ranked list or ask the user to choose. Simply output the top idea in the structured format from Step 4 and stop.
+
+### Interactive mode (default):
+
+#### 5a. Present the ranked list
 
 ```
 ## Proposed Experiments
@@ -149,7 +164,7 @@ Based on your focus on **{focus_area}** and analysis of the codebase{, N past ex
 {Idea 5 formatted as above (if applicable)}
 ```
 
-### 5b. Ask the user to choose
+#### 5b. Ask the user to choose
 
 Use AskUserQuestion:
 - question: "Which experiment would you like to run?"
@@ -161,7 +176,7 @@ Use AskUserQuestion:
   - {Idea 3 title} ({effort}, {expected primary metric change})
   - None — I have a different idea (Describe your own experiment)
 
-### 5c. Handle selection
+#### 5c. Handle selection
 
 **If user picks an idea:**
 Provide the exact command to run it:
