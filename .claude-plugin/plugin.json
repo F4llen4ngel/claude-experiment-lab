@@ -1,0 +1,8 @@
+{
+  "name": "experiment-lab",
+  "version": "1.0.0",
+  "description": "Hypothesis-driven ML experiment management for LLM apps and multi-agent systems",
+  "author": {
+    "name": "experiment-lab"
+  }
+}
