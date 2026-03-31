@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "experiment-lab": {
+      "command": "node",
+      "args": [
+        "PLUGIN_PATH/mcp-server/index.js"
+      ],
+      "env": {
+        "PROJECT_ROOT": "."
+      }
+    }
+  }
+}
