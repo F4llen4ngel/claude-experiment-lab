@@ -97,6 +97,60 @@ Based on the answer:
 
 Store as `test_data_location`, `test_data_source`, `test_data_description`.
 
+## Step 5b: Quick-Test Configuration (for Auto-Experiments)
+
+This step configures the quick evaluation settings used by `/auto-experiment`. Quick eval runs your evaluation on a small data subset first, saving time by discarding clearly-failing experiments before running the full (expensive) evaluation.
+
+Use AskUserQuestion:
+- question: "Would you like to configure quick-test settings for auto-experiments? This runs evaluation on a small data subset first to save time by discarding bad experiments early."
+- header: "Quick test"
+- multiSelect: false
+- options:
+  - Yes — configure quick-test (Recommended for expensive evaluations)
+  - No — skip (Auto-experiments will use defaults: 20% random subset)
+
+### If "Yes":
+
+**Subset percentage:**
+Ask: "What percentage of test data should the quick test use? (default: 20%, range: 10-50%)"
+- Store as `quick_eval.subset_percent` (integer, default 20)
+
+**Subset method:**
+Use AskUserQuestion:
+- question: "How should the quick-test subset be selected?"
+- header: "Subset method"
+- multiSelect: false
+- options:
+  - Random sample (Pick random test cases each run — best for diverse test sets)
+  - First N entries (Use the first N cases from the data file — deterministic)
+  - Dedicated quick-test file (I have a separate smaller test set)
+
+Store as `quick_eval.subset_method`: `random`, `first_n`, or `dedicated_file`.
+
+If "Dedicated quick-test file": ask for the path and verify it exists:
+```bash
+test -f {path} && echo "FOUND" || echo "NOT_FOUND"
+```
+Store as `quick_eval.subset_data_path`.
+
+**Proceed threshold:**
+Ask: "What is the minimum acceptable weighted delta for the quick test to proceed to full evaluation? A negative value tolerates slight regression on the small subset. (default: -2.0%)"
+- Store as `quick_eval.proceed_threshold` (float, default -2.0)
+
+### If "No" or if test data is not local files:
+
+Store defaults:
+```yaml
+quick_eval:
+  enabled: true
+  subset_percent: 20
+  subset_method: "random"
+  subset_data_path: null
+  proceed_threshold: -2.0
+```
+
+If test data source is `external_api` or `generated`, set `quick_eval.enabled: false` and note: "Quick eval disabled — test data is not local files."
+
 ## Step 6: Evaluation Methodology
 
 Use AskUserQuestion:
@@ -229,6 +283,10 @@ Present a full summary of everything captured in a clean format:
 **Environment**: {setup_type}
 Setup: `{setup_commands}`
 Env vars: {env_vars}
+
+**Quick eval** (for /auto-experiment): {enabled/disabled}
+Subset: {subset_percent}% ({subset_method})
+Proceed threshold: {proceed_threshold}%
 ```
 
 Use AskUserQuestion:
@@ -288,6 +346,13 @@ metrics:
     direction: "{direction}"
     target: {target_or_null}
     weight: {weight}
+
+quick_eval:
+  enabled: {true/false}
+  subset_percent: {percent}
+  subset_method: "{random|first_n|dedicated_file}"
+  subset_data_path: {path_or_null}
+  proceed_threshold: {threshold}
 ---
 
 # Experiment Lab Configuration
