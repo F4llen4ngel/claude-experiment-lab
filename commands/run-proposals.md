@@ -257,7 +257,7 @@ Log: "Cycle {N}: implementing proposal '{title}'"
 
    **Quick-rejected artifacts**:
    - Generate changes.diff: `cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff`
-   - Copy eval output to `.experiments/{slug}-{timestamp}/eval-output/`
+   - Copy ALL eval/benchmark output (raw model outputs, summary JSON, results files) to `.experiments/{slug}-{timestamp}/eval-output/`
    - Update idea.md: `status: quick_rejected`, `completed_at: {timestamp}`
 
 ### 4e. Full Evaluation (Phase 2)
@@ -275,7 +275,7 @@ Log: "Cycle {N}: implementing proposal '{title}'"
 
 5. **Generate artifacts**:
    - changes.diff: `cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff`
-   - Copy eval output to `.experiments/{slug}-{timestamp}/eval-output/`
+   - Copy ALL eval/benchmark output (raw model outputs, summary JSON, results files) to `.experiments/{slug}-{timestamp}/eval-output/`
    - Generate HTML report (if project has a report generator)
    - Write metrics.md with full comparison table and analysis
 
@@ -312,7 +312,7 @@ Log: "Cycle {N}: implementing proposal '{title}'"
 - [ ] **metrics.md created** — full comparison table, weighted delta, analysis
 - [ ] **quick-metrics.md created** (if quick eval ran)
 - [ ] **changes.diff generated**
-- [ ] **eval output copied** to eval-output/
+- [ ] **eval output copied** — ALL benchmark run artifacts (raw model outputs, summary JSON, results files) copied to eval-output/
 - [ ] **HTML report generated** (if applicable)
 - [ ] **proposal status updated** — marked implemented/rejected with results
 - [ ] **progress.md updated** — cycle appended

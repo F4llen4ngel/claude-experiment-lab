@@ -361,7 +361,7 @@ Follow the same logic as `/experiment` Steps 3-5:
      ```bash
      cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff
      ```
-   - Copy any eval output to `.experiments/{slug}-{timestamp}/eval-output/`
+   - Copy ALL eval/benchmark output (raw results, summary files) to `.experiments/{slug}-{timestamp}/eval-output/`
    - Update idea.md: set `status: quick_rejected`, `completed_at: {timestamp}`
 
 ### 4e. Full Evaluation (Phase 2)
@@ -401,10 +401,11 @@ This step runs only if:
    cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff
    ```
 
-   Copy eval output:
+   Copy ALL eval/benchmark output — the raw results file (model outputs on the benchmark), summary JSON, and any other artifacts produced by the evaluation:
    ```bash
-   cp {WORKTREE}/{eval_output_location} .experiments/{slug}-{timestamp}/eval-output/
+   cp -r {WORKTREE}/{eval_output_location} .experiments/{slug}-{timestamp}/eval-output/
    ```
+   If `eval_output_location` is a single file, also check for related files in the same directory (e.g., `*_summary.json`, `*_results.json`, `*.jsonl`) and copy those too. The goal is to preserve the complete benchmark run artifacts so results can be reviewed later without re-running.
 
    Generate HTML report (if configured):
    If the project has a report generation command (check config for `evaluation.report_command` or look for report generator scripts like `*viewer*.py`, `*report*.py`):
@@ -507,7 +508,7 @@ Before proceeding to the next cycle, verify ALL of the following are done. Do NO
 - [ ] **metrics.md created** — full metric comparison table, weighted delta, analysis section
 - [ ] **quick-metrics.md created** (if quick eval ran) — subset results
 - [ ] **changes.diff generated** — `git diff main...HEAD` captured
-- [ ] **eval output copied** — results copied to `.experiments/{slug}-{timestamp}/eval-output/`
+- [ ] **eval output copied** — ALL benchmark run artifacts (raw model outputs, summary JSON, results files) copied to `.experiments/{slug}-{timestamp}/eval-output/`
 - [ ] **HTML report generated** (if project has a report generator) — saved to `eval-output/report.html`
 - [ ] **progress.md updated** — cycle appended to YAML and markdown body (see below)
 - [ ] **baseline-metrics.md updated** (if merged) — new baseline values

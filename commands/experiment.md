@@ -328,11 +328,12 @@ If baseline was `status: pending`:
 cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff
 ```
 
-### 9b. Copy eval output
-If `evaluation.output_location` exists in the worktree, copy it:
+### 9b. Copy ALL eval/benchmark output
+Copy the complete benchmark run artifacts — raw results file (model outputs on the benchmark), summary JSON, and any related files. These must be preserved so results can be reviewed later without re-running.
 ```bash
-cp {WORKTREE}/{eval_output_location} .experiments/{slug}-{timestamp}/eval-output/
+cp -r {WORKTREE}/{eval_output_location} .experiments/{slug}-{timestamp}/eval-output/
 ```
+If `eval_output_location` is a single file, also check for related files in the same directory (e.g., `*_summary.json`, `*_results.json`, `*.jsonl`) and copy those too.
 
 ### 9c. Generate HTML report
 If the project has a report generation command (check config for `evaluation.report_command` or look for report generator scripts like `*viewer*.py`, `*report*.py`):
