@@ -275,7 +275,7 @@ Log: "Cycle {N}: implementing proposal '{title}'"
 
 5. **Generate artifacts**:
    - changes.diff: `cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff`
-   - Copy raw results JSON (full per-case model outputs) to `.experiments/{slug}-{timestamp}/eval-output/`
+   - Copy the raw results JSON — the FULL benchmark output file with every model response (e.g., `20260402_011142.json`) to `.experiments/{slug}-{timestamp}/eval-output/`. NEVER skip this.
    - Copy summary JSON (aggregated metrics) to `.experiments/{slug}-{timestamp}/eval-output/`
    - Generate HTML report to `.experiments/{slug}-{timestamp}/eval-output/report.html`
    - Write metrics.md with full comparison table and analysis
@@ -313,7 +313,7 @@ Log: "Cycle {N}: implementing proposal '{title}'"
 - [ ] **metrics.md created** — full comparison table, weighted delta, analysis
 - [ ] **quick-metrics.md created** (if quick eval ran)
 - [ ] **changes.diff generated**
-- [ ] **raw results JSON copied** — full benchmark output with per-case model responses
+- [ ] **raw results JSON copied** — the timestamped JSON file (e.g., `20260402_011142.json`) with every model response. NEVER skip this.
 - [ ] **summary JSON copied** — aggregated metrics summary
 - [ ] **HTML report generated** — interactive viewer saved to `eval-output/report.html`
 - [ ] **HTML report generated** (if applicable)

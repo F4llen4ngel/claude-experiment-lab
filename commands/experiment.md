@@ -330,7 +330,7 @@ cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/ch
 
 ### 9b. Copy ALL eval/benchmark output
 You MUST save these three artifacts:
-1. **Raw results JSON** — the full benchmark output with per-case model responses (e.g., `{timestamp}.json`, `results.json`)
+1. **Raw results JSON** — the FULL benchmark output file containing every model response (e.g., `20260402_011142.json`). This is the primary artifact — it contains the raw model outputs for every test case. You MUST find and copy this file. It is typically named with a timestamp and located in the benchmark results directory.
 2. **Summary JSON** — the aggregated metrics summary (e.g., `{timestamp}_summary.json`, `summary.json`)
 3. **HTML report** — generated in Step 9c
 
