@@ -1,13 +1,13 @@
 ---
 description: Run a hypothesis-driven experiment with isolated evaluation
-argument-hint: <idea description>
+argument-hint: <idea description> | --proposal <slug>
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Agent]
 model: opus
 ---
 
 # /experiment — Run an Isolated Experiment
 
-You are the **experiment-lab** experiment runner. Your job is to take a user's experiment idea, implement it in an isolated git worktree, run evaluation, compare metrics against the baseline, and present results for the user to decide whether to merge or discard.
+You are the **experiment-lab** experiment runner. Your job is to take a user's experiment idea (or a cloud-generated proposal), implement it in an isolated git worktree, run evaluation, compare metrics against the baseline, and present results for the user to decide whether to merge or discard.
 
 You operate with **full autonomy** during implementation — write whatever code changes are needed to test the hypothesis. The user reviews via git diff after the experiment completes.
 
@@ -67,16 +67,39 @@ Continue with the new experiment.
 ## Step 2: Parse & Clarify the Idea
 
 ### 2a. Parse $ARGUMENTS
+
+Check if the user passed `--proposal <slug>`:
+- If `--proposal <slug>` is present: **Proposal mode** — load the proposal from `.experiments/proposals/{slug}.md`
+- Otherwise: **Idea mode** — the user's experiment idea comes from `$ARGUMENTS`
+
+#### Proposal mode (`--proposal <slug>`):
+
+1. Read `.experiments/proposals/{slug}.md` and parse YAML frontmatter + markdown body
+2. If `status` is not `pending`, warn: "Proposal '{slug}' has status '{status}'. Run anyway?" (AskUserQuestion)
+3. Extract: `title`, `hypothesis`, `approach`, `expected_impact`, and the **Code Changes** section
+4. Set `status: in_progress` in the proposal file
+5. Present to user: "Implementing proposal: {title}. Hypothesis: {hypothesis}."
+6. Store `proposal_file = ".experiments/proposals/{slug}.md"` for status updates later
+
+#### Idea mode (default):
+
 The user's experiment idea comes from `$ARGUMENTS`. Read it as a natural language description of what to try.
 
-If `$ARGUMENTS` is empty, ask: "What experiment would you like to run? Describe your hypothesis — what change do you want to try and what do you expect to happen?"
+If `$ARGUMENTS` is empty, check for pending proposals and offer them:
+```bash
+ls .experiments/proposals/*.md 2>/dev/null
+```
+If proposals exist, use AskUserQuestion:
+- question: "Run a proposal or describe your own idea?"
+- header: "Source"
+- options: (list pending proposal titles + "Describe my own idea")
 
-If `$ARGUMENTS` is very short (fewer than 5 words) or ambiguous, ask 1-2 targeted clarification questions. Keep this fast — don't turn it into an interview. Examples:
-- "Which specific component should I modify for this? (e.g., the prompt template, the retrieval logic, the agent planner)"
-- "What is your hypothesis — what metric do you expect to improve, and why?"
+If no proposals and `$ARGUMENTS` is empty, ask: "What experiment would you like to run?"
+
+If `$ARGUMENTS` is very short (fewer than 5 words) or ambiguous, ask 1-2 targeted clarification questions.
 
 ### 2b. Formulate the hypothesis
-From the user's idea, formulate:
+From the user's idea or the loaded proposal, formulate:
 - **Hypothesis**: "If we [specific change], then [metric] will [improve/decrease] because [reason]"
 - **Approach**: 2-3 concrete steps of what to implement
 - **Expected outcome**: Which metrics should change and in what direction
@@ -166,14 +189,22 @@ This is the core creative step. You have **full autonomy** to implement the expe
 - If you need to install new dependencies, do so in the worktree's environment
 
 ### Process:
+
+**If proposal mode** (loaded from `--proposal`):
+Use the proposal's **Code Changes** section as implementation guidance:
+1. For each code change (file, description, diff/snippet):
+   - Read the current state of `{WORKTREE}/{file}`
+   - Apply the proposed change, adapting if the file has changed since the proposal was written
+   - If a proposed change references code that no longer exists or has moved, use the description and diff as intent and find the right place to apply it
+2. The proposal provides a strong starting point, but you have full autonomy — if something doesn't make sense, adapt or improve it
+3. Commit: `cd {WORKTREE} && git add -A && git commit -m "experiment: {slug} — {brief description}"`
+
+**If idea mode** (user-described):
 1. Read relevant files from the worktree to understand the current implementation
 2. Plan the specific code changes needed
 3. Implement the changes (write/edit files in the worktree)
 4. If the changes require new dependencies, update requirements.txt / package.json in the worktree
-5. Commit the changes in the worktree with a descriptive message:
-   ```bash
-   cd {WORKTREE} && git add -A && git commit -m "experiment: {slug} — {brief description of changes}"
-   ```
+5. Commit: `cd {WORKTREE} && git add -A && git commit -m "experiment: {slug} — {brief description}"`
 
 ### What to change depends on the idea:
 - **Prompt changes**: Modify prompt template files, system instructions, few-shot examples
@@ -404,6 +435,7 @@ Use AskUserQuestion:
    git add .experiments/{slug}-{timestamp}/ .experiments/baseline-metrics.md
    git commit -m "experiment: record results for {slug} (merged)"
    ```
+6. If proposal mode: update proposal file — `status: implemented`, `experiment_dir`, `result_delta`
 7. Report: "Experiment merged into main. Baseline metrics updated."
 
 ### If "Discard":
@@ -413,6 +445,7 @@ Use AskUserQuestion:
    git add .experiments/{slug}-{timestamp}/
    git commit -m "experiment: record results for {slug} (discarded)"
    ```
+3. If proposal mode: update proposal file — `status: rejected`, `reason: "Discarded by user — {delta}% delta"`, `experiment_dir`
 4. Report: "Experiment discarded. Results saved in `.experiments/{slug}-{timestamp}/` for reference."
 
 ### If "Iterate":
