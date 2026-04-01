@@ -275,8 +275,9 @@ Log: "Cycle {N}: implementing proposal '{title}'"
 
 5. **Generate artifacts**:
    - changes.diff: `cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff`
-   - Copy ALL eval/benchmark output (raw model outputs, summary JSON, results files) to `.experiments/{slug}-{timestamp}/eval-output/`
-   - Generate HTML report (if project has a report generator)
+   - Copy raw results JSON (full per-case model outputs) to `.experiments/{slug}-{timestamp}/eval-output/`
+   - Copy summary JSON (aggregated metrics) to `.experiments/{slug}-{timestamp}/eval-output/`
+   - Generate HTML report to `.experiments/{slug}-{timestamp}/eval-output/report.html`
    - Write metrics.md with full comparison table and analysis
 
 ### 4f. Auto-Decide
@@ -312,7 +313,9 @@ Log: "Cycle {N}: implementing proposal '{title}'"
 - [ ] **metrics.md created** — full comparison table, weighted delta, analysis
 - [ ] **quick-metrics.md created** (if quick eval ran)
 - [ ] **changes.diff generated**
-- [ ] **eval output copied** — ALL benchmark run artifacts (raw model outputs, summary JSON, results files) copied to eval-output/
+- [ ] **raw results JSON copied** — full benchmark output with per-case model responses
+- [ ] **summary JSON copied** — aggregated metrics summary
+- [ ] **HTML report generated** — interactive viewer saved to `eval-output/report.html`
 - [ ] **HTML report generated** (if applicable)
 - [ ] **proposal status updated** — marked implemented/rejected with results
 - [ ] **progress.md updated** — cycle appended

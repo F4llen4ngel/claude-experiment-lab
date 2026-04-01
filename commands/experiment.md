@@ -329,11 +329,16 @@ cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/ch
 ```
 
 ### 9b. Copy ALL eval/benchmark output
-Copy the complete benchmark run artifacts — raw results file (model outputs on the benchmark), summary JSON, and any related files. These must be preserved so results can be reviewed later without re-running.
+You MUST save these three artifacts:
+1. **Raw results JSON** — the full benchmark output with per-case model responses (e.g., `{timestamp}.json`, `results.json`)
+2. **Summary JSON** — the aggregated metrics summary (e.g., `{timestamp}_summary.json`, `summary.json`)
+3. **HTML report** — generated in Step 9c
+
 ```bash
-cp -r {WORKTREE}/{eval_output_location} .experiments/{slug}-{timestamp}/eval-output/
+# Copy raw results and summary
+cp {WORKTREE}/{eval_output_dir}/*.json .experiments/{slug}-{timestamp}/eval-output/
 ```
-If `eval_output_location` is a single file, also check for related files in the same directory (e.g., `*_summary.json`, `*_results.json`, `*.jsonl`) and copy those too.
+Also copy any other artifacts (`.jsonl`, `.csv`) from the eval output directory.
 
 ### 9c. Generate HTML report
 If the project has a report generation command (check config for `evaluation.report_command` or look for report generator scripts like `*viewer*.py`, `*report*.py`):
