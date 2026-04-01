@@ -312,6 +312,7 @@ Follow the same logic as `/experiment` Steps 3-5:
 6. **Implement changes** (full autonomy):
    - ALL file reads and writes target `{WORKTREE}/path/to/file`
    - Make minimal, focused changes that test the hypothesis
+   - **CRITICAL: Stack on top of merged changes** — the worktree starts from current main HEAD, which includes all previously merged experiments. NEVER remove or revert changes from prior merged experiments. Your changes must be ADDITIVE. If a proposal's code changes conflict with already-merged code, adapt the proposal to build on top of what's there.
 
    **If `proposal_mode` and `selected_idea.code_changes` exists:**
    Use the proposal's code changes as **implementation guidance**:
@@ -468,6 +469,12 @@ This step runs only if:
    cp {WORKTREE}/{eval_output_location} .experiments/{slug}-{timestamp}/eval-output/
    ```
 
+   Generate HTML report (if configured):
+   If the project has a report generation command (check config for `evaluation.report_command` or look for report generator scripts like `*viewer*.py`, `*report*.py`):
+   ```bash
+   {report_command} {eval_output_file} -o .experiments/{slug}-{timestamp}/eval-output/report.html
+   ```
+
    Write metrics.md — `.experiments/{slug}-{timestamp}/metrics.md`:
    ```markdown
    ---
@@ -510,12 +517,7 @@ This step runs only if:
 Based on the evaluation outcome:
 
 **If `outcome` is "quick_rejected":**
-1. Clean up worktree:
-   ```bash
-   git worktree remove .worktrees/exp-{slug} --force
-   git branch -D experiment/{slug}
-   ```
-2. Commit experiment artifacts:
+1. Commit experiment artifacts:
    ```bash
    git add .experiments/{slug}-{timestamp}/
    git commit -m "auto-experiment: cycle {N} — {slug} (quick-rejected)"
@@ -524,12 +526,7 @@ Based on the evaluation outcome:
 
 **If `outcome` is "failed":**
 1. Update idea.md: `status: failed`, `completed_at: {timestamp}`
-2. Clean up worktree:
-   ```bash
-   git worktree remove .worktrees/exp-{slug} --force
-   git branch -D experiment/{slug}
-   ```
-3. Commit experiment artifacts:
+2. Commit experiment artifacts:
    ```bash
    git add .experiments/{slug}-{timestamp}/
    git commit -m "auto-experiment: cycle {N} — {slug} (failed)"
@@ -550,12 +547,7 @@ Based on the evaluation outcome:
    - The experiment's metric values become the new baseline
    - Write updated `.experiments/baseline-metrics.md`
 4. Update idea.md: `status: merged`, `merged_at: {timestamp}`
-5. Clean up worktree:
-   ```bash
-   git worktree remove .worktrees/exp-{slug}
-   git branch -d experiment/{slug}
-   ```
-6. Commit artifacts and updated baseline:
+5. Commit artifacts and updated baseline:
    ```bash
    git add .experiments/{slug}-{timestamp}/ .experiments/baseline-metrics.md
    git commit -m "auto-experiment: record results for {slug} (merged, cycle {N})"
@@ -563,12 +555,7 @@ Based on the evaluation outcome:
 
 **If `overall_weighted_delta <= 0` (no improvement or regression) — AUTO-DISCARD:**
 1. Update idea.md: `status: discarded`, `discarded_at: {timestamp}`
-2. Clean up worktree:
-   ```bash
-   git worktree remove .worktrees/exp-{slug} --force
-   git branch -D experiment/{slug}
-   ```
-3. Commit experiment artifacts:
+2. Commit experiment artifacts:
    ```bash
    git add .experiments/{slug}-{timestamp}/
    git commit -m "auto-experiment: cycle {N} — {slug} (discarded, delta {delta}%)"
@@ -585,7 +572,22 @@ If `selected_idea.proposal_file` exists (this cycle came from a proposal), updat
 
 This allows cloud Claude to see what happened to its proposals when it next reads experiment history.
 
-### 4g. Record Cycle Result
+### 4g. Artifact Checklist (MANDATORY before next cycle)
+
+Before proceeding to the next cycle, verify ALL of the following are done. Do NOT skip any step:
+
+- [ ] **idea.md updated** — status set to merged/discarded/quick_rejected/failed, timestamps set
+- [ ] **metrics.md created** — full metric comparison table, weighted delta, analysis section
+- [ ] **quick-metrics.md created** (if quick eval ran) — subset results
+- [ ] **changes.diff generated** — `git diff main...HEAD` captured
+- [ ] **eval output copied** — results copied to `.experiments/{slug}-{timestamp}/eval-output/`
+- [ ] **HTML report generated** (if project has a report generator) — saved to `eval-output/report.html`
+- [ ] **proposal status updated** (if `proposal_mode`) — marked implemented/rejected with results
+- [ ] **progress.md updated** — cycle appended to YAML and markdown body (see below)
+- [ ] **baseline-metrics.md updated** (if merged) — new baseline values
+- [ ] **All artifacts committed to git**
+
+### 4h. Record Cycle Result
 
 Update `.experiments/auto-run-{timestamp}/progress.md` — append to the `cycles` array in the YAML frontmatter:
 
@@ -615,7 +617,7 @@ Also append to the markdown body:
 - **Lesson**: {lesson}
 ```
 
-### 4h. Learn from Failure
+### 4i. Learn from Failure
 
 If the experiment was discarded, quick-rejected, or failed:
 
@@ -738,13 +740,17 @@ If not achieved:
 
 1. **Never modify files on main during a cycle** — all code changes happen in worktrees
 2. **Always preserve ALL experiment artifacts** — merged, discarded, quick-rejected, and failed experiments ALL keep their full artifact directories (idea.md, metrics, logs, diffs, eval output). Nothing is deleted.
-3. **Auto-merge only on improvement** — weighted delta must be strictly positive
-4. **Stop on merge conflicts** — never force-resolve, ask the user
-5. **No duplicate experiments** — track what was tried and don't repeat it
-6. **Feed lessons forward** — each failed cycle's lesson informs the next cycle's proposal
-7. **Quick eval is a heuristic, not absolute** — if it crashes, fall back to full eval
-8. **Log everything** — every decision, every metric, every lesson goes into progress.md
-9. **Commit after every cycle** — even failed experiments get their artifacts committed to git
-10. **Honest reporting** — don't sugarcoat results in the summary. If progress plateaued, say so.
-11. **Proposal mode respects proposal intent** — when using `--from-proposals`, implement what the cloud Claude proposed (guided by `code_changes`), but adapt if the code has changed since the proposal was written.
-12. **Always update proposal status** — in proposal mode, mark each proposal as `implemented` or `rejected` after the cycle, so cloud Claude can track outcomes.
+3. **Never delete worktrees or branches** — after each cycle (merged, discarded, quick-rejected, failed), leave the worktree and branch intact. Only clean up if the user explicitly asks.
+4. **Stack changes on merged experiments** — new experiments start from current main HEAD (which includes all merged experiments). NEVER remove or revert previously merged changes. All changes must be additive.
+5. **Auto-merge only on improvement** — weighted delta must be strictly positive
+6. **Stop on merge conflicts** — never force-resolve, ask the user
+7. **No duplicate experiments** — track what was tried and don't repeat it
+8. **Feed lessons forward** — each failed cycle's lesson informs the next cycle's proposal
+9. **Quick eval is a heuristic, not absolute** — if it crashes, fall back to full eval
+10. **Complete the artifact checklist before every next cycle** — idea.md, metrics.md, quick-metrics.md, changes.diff, eval output, HTML report, proposal status, progress.md, baseline update, git commit. Never skip artifact updates.
+11. **Generate HTML reports** — if the project has a report generator, always save report.html to eval-output/
+12. **Log everything** — every decision, every metric, every lesson goes into progress.md
+13. **Commit after every cycle** — even failed experiments get their artifacts committed to git
+14. **Honest reporting** — don't sugarcoat results in the summary. If progress plateaued, say so.
+15. **Proposal mode respects proposal intent** — when using `--from-proposals`, implement what the cloud Claude proposed (guided by `code_changes`), but adapt if the code has changed since the proposal was written.
+16. **Always update proposal status** — in proposal mode, mark each proposal as `implemented` or `rejected` after the cycle, so cloud Claude can track outcomes.

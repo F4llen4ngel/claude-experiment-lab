@@ -162,6 +162,7 @@ This is the core creative step. You have **full autonomy** to implement the expe
 - **ALL file reads and writes target the worktree path**: `{WORKTREE}/path/to/file`
 - Do NOT modify files in the main working directory — only in the worktree
 - Make minimal, focused changes that test the hypothesis — don't refactor unrelated code
+- **Stack on top of merged changes** — the worktree starts from current main HEAD, which includes all previously merged experiments. NEVER remove or revert changes from prior merged experiments. Your changes must be ADDITIVE.
 - If you need to install new dependencies, do so in the worktree's environment
 
 ### Process:
@@ -236,10 +237,8 @@ Use AskUserQuestion:
 4. Stop.
 
 **If "Abort":**
-1. Clean up worktree: `git worktree remove {WORKTREE} --force`
-2. Delete branch: `git branch -D experiment/{slug}`
-3. Update idea.md: `status: abandoned`
-4. Stop.
+1. Update idea.md: `status: abandoned`
+2. Stop. (Worktree and branch are preserved for reference.)
 
 ## Step 8: Extract Metrics & Compare
 
@@ -298,7 +297,13 @@ If `evaluation.output_location` exists in the worktree, copy it:
 cp {WORKTREE}/{eval_output_location} .experiments/{slug}-{timestamp}/eval-output/
 ```
 
-### 9c. Write metrics.md
+### 9c. Generate HTML report
+If the project has a report generation command (check config for `evaluation.report_command` or look for report generator scripts like `*viewer*.py`, `*report*.py`):
+```bash
+{report_command} {eval_output_file} -o .experiments/{slug}-{timestamp}/eval-output/report.html
+```
+
+### 9d. Write metrics.md
 Write `.experiments/{slug}-{timestamp}/metrics.md`:
 
 ```markdown
@@ -394,12 +399,7 @@ Use AskUserQuestion:
    - Read the experiment's metric values
    - Write updated `.experiments/baseline-metrics.md` with new values and commit hash
 4. Update idea.md: set `status: merged`, `merged_at: {timestamp}`
-5. Clean up:
-   ```bash
-   git worktree remove {WORKTREE}
-   git branch -d experiment/{slug}
-   ```
-6. Commit the experiment artifacts:
+5. Commit the experiment artifacts:
    ```bash
    git add .experiments/{slug}-{timestamp}/ .experiments/baseline-metrics.md
    git commit -m "experiment: record results for {slug} (merged)"
@@ -408,12 +408,7 @@ Use AskUserQuestion:
 
 ### If "Discard":
 1. Update idea.md: set `status: discarded`, `discarded_at: {timestamp}`
-2. Clean up:
-   ```bash
-   git worktree remove {WORKTREE} --force
-   git branch -D experiment/{slug}
-   ```
-3. Commit experiment artifacts (keep for history):
+2. Commit experiment artifacts (keep for history):
    ```bash
    git add .experiments/{slug}-{timestamp}/
    git commit -m "experiment: record results for {slug} (discarded)"
@@ -438,9 +433,13 @@ Use AskUserQuestion:
 
 1. **Never modify files on main** — all code changes happen in the worktree
 2. **Always verify worktree exists** before writing to it
-3. **Commit changes in the worktree** before running eval
-4. **Log everything** — run.log captures all eval output
-5. **Keep experiment artifacts** even for discarded experiments — they inform future proposals
-6. **If baseline is pending**, capture it before comparing
-7. **Metric comparison must be direction-aware** — "improved" means the metric moved in the configured direction
-8. **Present honest analysis** — don't sugarcoat results. If the experiment degraded metrics, say so clearly.
+3. **Never delete worktrees or branches** — after merge, discard, or abort, leave the worktree and branch intact for reference. Only clean up if the user explicitly asks.
+4. **Stack changes on merged experiments** — the worktree starts from current main HEAD (which includes all merged experiments). NEVER remove or revert previously merged changes. All changes must be additive.
+5. **Commit changes in the worktree** before running eval
+6. **Log everything** — run.log captures all eval output
+7. **Keep experiment artifacts** even for discarded experiments — they inform future proposals
+8. **Generate HTML reports** — if the project has a report generator, always save report.html to eval-output/ after each evaluation
+9. **Complete all artifact updates** — idea.md, metrics.md, changes.diff, eval output, HTML report must all be written before presenting results or moving on
+10. **If baseline is pending**, capture it before comparing
+11. **Metric comparison must be direction-aware** — "improved" means the metric moved in the configured direction
+12. **Present honest analysis** — don't sugarcoat results. If the experiment degraded metrics, say so clearly.
