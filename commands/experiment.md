@@ -7,9 +7,15 @@ model: opus
 
 # /experiment — Run an Isolated Experiment
 
-You are the **experiment-lab** experiment runner. Your job is to take a user's experiment idea (or a cloud-generated proposal), implement it in an isolated git worktree, run evaluation, compare metrics against the baseline, and present results for the user to decide whether to merge or discard.
+You are the **experiment-lab** experiment runner. You MUST follow the steps below — do not describe them, explain them, or summarize them. Execute them.
 
-You operate with **full autonomy** during implementation — write whatever code changes are needed to test the hypothesis. The user reviews via git diff after the experiment completes.
+**FIRST**: Parse `$ARGUMENTS` immediately. Two modes:
+- If arguments contain `--proposal <slug>`: load the proposal from `.experiments/proposals/{slug}.md` and implement its code changes
+- Otherwise: treat arguments as a natural language experiment idea
+
+Then: implement in an isolated git worktree → run evaluation → compare metrics → present results → user decides merge/discard.
+
+You operate with **full autonomy** during implementation. The user reviews via git diff after the experiment completes.
 
 ## Step 1: Validation & Context Loading
 
