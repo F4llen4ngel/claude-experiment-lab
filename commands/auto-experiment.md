@@ -1,6 +1,6 @@
 ---
 description: Automatically run experiment cycles to reach a metric goal
-argument-hint: <goal description> [--cycles N] [--from-proposals]
+argument-hint: <goal description> [--cycles N]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Agent, WebSearch]
 model: opus
 ---
@@ -18,13 +18,11 @@ You use a **combined testing strategy**: every experiment is first evaluated on 
 Extract from the user's input:
 - **Goal description**: natural language (e.g., "improve accuracy to 90%", "reduce latency below 500ms")
 - **max_cycles**: integer, extracted from `--cycles N` flag. Default: 5.
-- **proposal_mode**: boolean, true if `--from-proposals` flag is present. Default: false.
 
 Examples:
 - `improve accuracy to 0.9 --cycles 8` → goal_metric=accuracy, goal_target=0.9, max_cycles=8
 - `get task_completion_rate above 85%` → goal_metric=task_completion_rate, goal_target=0.85, max_cycles=5
 - `reduce cost_per_query to 0.02 --cycles 3` → goal_metric=cost_per_query, goal_target=0.02, max_cycles=3
-- `improve accuracy to 0.9 --from-proposals` → proposal_mode=true, reads proposals from `.experiments/proposals/`
 
 If the goal is ambiguous (can't determine which metric or target), use AskUserQuestion:
 - question: "Which metric do you want to optimize, and what's your target value?"
@@ -86,30 +84,6 @@ Look for entries under `.worktrees/exp-*`. If found, use AskUserQuestion:
 
 If "Yes": clean up all experiment worktrees and mark their idea.md files as `status: abandoned`.
 If "No": stop.
-
-### 1i. Load proposals (if --from-proposals)
-
-**Skip this step if `proposal_mode` is false.**
-
-Scan for pending proposals:
-```bash
-ls .experiments/proposals/*.md 2>/dev/null
-```
-
-If no proposals directory or no `.md` files found, stop with: "No proposals found in `.experiments/proposals/`. Run `/plan-experiments` from cloud Claude first to generate proposals."
-
-For each proposal file found:
-1. Read the file and parse the YAML frontmatter
-2. Filter to only `status: pending` proposals
-3. Sort by file modification time (oldest first — FIFO order)
-
-If no pending proposals remain, stop with: "All proposals have been processed (none with `status: pending`). Generate new proposals with `/plan-experiments` from cloud Claude."
-
-Store the sorted proposal queue as `pending_proposals`.
-
-If `max_cycles` was not explicitly set by the user, default it to the number of pending proposals.
-
-Log: "Found {N} pending proposals. Will process up to {max_cycles} in this run."
 
 ## Step 2: Quick-Test Setup
 
@@ -199,32 +173,7 @@ For `cycle = 1` to `max_cycles`:
 
 Log: "Cycle {N}/{max_cycles} — {goal_metric}: {current_value} (target: {goal_target})"
 
-### 4b. Select or Propose the Next Experiment
-
-#### If `proposal_mode` is true (--from-proposals):
-
-Pop the next proposal from `pending_proposals`:
-
-1. Read the full proposal file from `.experiments/proposals/{slug}.md`
-2. Parse the YAML frontmatter and markdown body:
-   - `title`, `hypothesis`, `approach`, `expected_impact`
-   - `code_changes` — the concrete code modifications proposed by cloud Claude
-3. Update the proposal file's YAML frontmatter: set `status: in_progress`
-4. Use the proposal directly as `selected_idea`:
-   - `selected_idea.title` = proposal title
-   - `selected_idea.hypothesis` = proposal hypothesis
-   - `selected_idea.approach` = proposal approach steps
-   - `selected_idea.expected_impact` = proposal expected impact
-   - `selected_idea.code_changes` = proposal code changes (used as implementation guidance in Step 4c)
-   - `selected_idea.proposal_file` = path to the proposal file (for status updates later)
-
-5. If `pending_proposals` is empty (all consumed):
-   - Log: "All proposals have been processed. Stopping."
-   - Break out of loop, go to Step 5 with status "proposals_exhausted".
-
-Log: "Cycle {N}: implementing proposal '{title}'"
-
-#### If `proposal_mode` is false (default — self-proposing):
+### 4b. Propose the Next Experiment
 
 Run the proposal logic from `/propose-experiments` Steps 1-4, with these adjustments for non-interactive mode:
 
@@ -312,18 +261,7 @@ Follow the same logic as `/experiment` Steps 3-5:
 6. **Implement changes** (full autonomy):
    - ALL file reads and writes target `{WORKTREE}/path/to/file`
    - Make minimal, focused changes that test the hypothesis
-
-   **If `proposal_mode` and `selected_idea.code_changes` exists:**
-   Use the proposal's code changes as **implementation guidance**:
-   - For each entry in `code_changes` (file, description, diff_or_snippet):
-     - Read the current state of `{WORKTREE}/{file}`
-     - Apply the proposed change, adapting if the file has changed since the proposal was written
-     - If a proposed change references code that no longer exists or has moved, use the description and diff as intent and find the right place to apply it
-   - The proposal provides a strong starting point, but you still have full autonomy — if something doesn't make sense, adapt or improve it
-
-   **If self-proposing mode (no code_changes):**
-   Implement based on the hypothesis and approach as normal.
-
+   - **CRITICAL: Stack on top of merged changes** — the worktree starts from current main HEAD, which includes all previously merged experiments. NEVER remove or revert changes from prior merged experiments. Your changes must be ADDITIVE.
    - Commit in the worktree:
      ```bash
      cd {WORKTREE} && git add -A && git commit -m "experiment: {slug} — {brief description}"
@@ -423,7 +361,7 @@ Follow the same logic as `/experiment` Steps 3-5:
      ```bash
      cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff
      ```
-   - Copy any eval output to `.experiments/{slug}-{timestamp}/eval-output/`
+   - Copy raw results JSON, summary JSON, and generate HTML report to `.experiments/{slug}-{timestamp}/eval-output/`
    - Update idea.md: set `status: quick_rejected`, `completed_at: {timestamp}`
 
 ### 4e. Full Evaluation (Phase 2)
@@ -463,9 +401,23 @@ This step runs only if:
    cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff
    ```
 
-   Copy eval output:
+   Copy ALL eval/benchmark output. You MUST save these three artifacts:
+   1. **Raw results JSON** — the FULL benchmark output file containing every model response (e.g., `20260402_011142.json`). This is the primary artifact — it contains the raw model outputs for every test case. You MUST find and copy this file. It is typically named with a timestamp and located in the benchmark results directory.
+   2. **Summary JSON** — the aggregated metrics summary (e.g., `{timestamp}_summary.json`, `summary.json`)
+   3. **HTML report** — the interactive viewer (generate if the project has a report command)
+
    ```bash
-   cp {WORKTREE}/{eval_output_location} .experiments/{slug}-{timestamp}/eval-output/
+   # Copy raw results and summary
+   cp {WORKTREE}/{eval_output_dir}/*.json .experiments/{slug}-{timestamp}/eval-output/
+   # Generate HTML report
+   {report_command} {raw_results_json} -o .experiments/{slug}-{timestamp}/eval-output/report.html
+   ```
+   Also copy any other artifacts (`.jsonl`, `.csv`) from the eval output directory. The goal is to preserve the complete benchmark run so results can be reviewed later without re-running.
+
+   Generate HTML report (if configured):
+   If the project has a report generation command (check config for `evaluation.report_command` or look for report generator scripts like `*viewer*.py`, `*report*.py`):
+   ```bash
+   {report_command} {eval_output_file} -o .experiments/{slug}-{timestamp}/eval-output/report.html
    ```
 
    Write metrics.md — `.experiments/{slug}-{timestamp}/metrics.md`:
@@ -510,31 +462,21 @@ This step runs only if:
 Based on the evaluation outcome:
 
 **If `outcome` is "quick_rejected":**
-1. Clean up worktree:
-   ```bash
-   git worktree remove .worktrees/exp-{slug} --force
-   git branch -D experiment/{slug}
-   ```
-2. Commit experiment artifacts:
+1. Commit experiment artifacts:
    ```bash
    git add .experiments/{slug}-{timestamp}/
    git commit -m "auto-experiment: cycle {N} — {slug} (quick-rejected)"
    ```
-3. Record lesson: "Quick test showed {weighted_delta}% regression on {subset_percent}% subset. Hypothesis: {hypothesis}. The approach of {brief description} did not show promise."
+2. Record lesson: "Quick test showed {weighted_delta}% regression on {subset_percent}% subset. Hypothesis: {hypothesis}. The approach of {brief description} did not show promise."
 
 **If `outcome` is "failed":**
 1. Update idea.md: `status: failed`, `completed_at: {timestamp}`
-2. Clean up worktree:
-   ```bash
-   git worktree remove .worktrees/exp-{slug} --force
-   git branch -D experiment/{slug}
-   ```
-3. Commit experiment artifacts:
+2. Commit experiment artifacts:
    ```bash
    git add .experiments/{slug}-{timestamp}/
    git commit -m "auto-experiment: cycle {N} — {slug} (failed)"
    ```
-4. Record lesson: "Evaluation failed with exit code {code}. Error: {brief error summary}. The approach may need debugging."
+3. Record lesson: "Evaluation failed with exit code {code}. Error: {brief error summary}. The approach may need debugging."
 
 **If `overall_weighted_delta > 0` (improvement) — AUTO-MERGE:**
 1. Merge experiment branch into main:
@@ -550,12 +492,7 @@ Based on the evaluation outcome:
    - The experiment's metric values become the new baseline
    - Write updated `.experiments/baseline-metrics.md`
 4. Update idea.md: `status: merged`, `merged_at: {timestamp}`
-5. Clean up worktree:
-   ```bash
-   git worktree remove .worktrees/exp-{slug}
-   git branch -d experiment/{slug}
-   ```
-6. Commit artifacts and updated baseline:
+5. Commit artifacts and updated baseline:
    ```bash
    git add .experiments/{slug}-{timestamp}/ .experiments/baseline-metrics.md
    git commit -m "auto-experiment: record results for {slug} (merged, cycle {N})"
@@ -563,29 +500,29 @@ Based on the evaluation outcome:
 
 **If `overall_weighted_delta <= 0` (no improvement or regression) — AUTO-DISCARD:**
 1. Update idea.md: `status: discarded`, `discarded_at: {timestamp}`
-2. Clean up worktree:
-   ```bash
-   git worktree remove .worktrees/exp-{slug} --force
-   git branch -D experiment/{slug}
-   ```
-3. Commit experiment artifacts:
+2. Commit experiment artifacts:
    ```bash
    git add .experiments/{slug}-{timestamp}/
    git commit -m "auto-experiment: cycle {N} — {slug} (discarded, delta {delta}%)"
    ```
-4. Record lesson: "Full eval showed {weighted_delta}% overall delta. {metric}: {baseline} → {experiment}. The approach of {brief description} did not improve the target metric."
+3. Record lesson: "Full eval showed {weighted_delta}% overall delta. {metric}: {baseline} → {experiment}. The approach of {brief description} did not improve the target metric."
 
-**In all cases above — update proposal status (if `proposal_mode`):**
+### 4g. Artifact Checklist (MANDATORY before next cycle)
 
-If `selected_idea.proposal_file` exists (this cycle came from a proposal), update the proposal file's YAML frontmatter:
-- If merged: set `status: implemented`, add `experiment_dir: ".experiments/{slug}-{timestamp}"`, `result_delta: {weighted_delta}`
-- If discarded: set `status: rejected`, add `reason: "Full eval showed {weighted_delta}% delta"`, `experiment_dir: ".experiments/{slug}-{timestamp}"`
-- If quick_rejected: set `status: rejected`, add `reason: "Quick eval showed {weighted_delta}% delta (threshold: {threshold}%)"`, `experiment_dir: ".experiments/{slug}-{timestamp}"`
-- If failed: set `status: rejected`, add `reason: "Evaluation failed: {brief error}"`, `experiment_dir: ".experiments/{slug}-{timestamp}"`
+Before proceeding to the next cycle, verify ALL of the following are done. Do NOT skip any step:
 
-This allows cloud Claude to see what happened to its proposals when it next reads experiment history.
+- [ ] **idea.md updated** — status set to merged/discarded/quick_rejected/failed, timestamps set
+- [ ] **metrics.md created** — full metric comparison table, weighted delta, analysis section
+- [ ] **quick-metrics.md created** (if quick eval ran) — subset results
+- [ ] **changes.diff generated** — `git diff main...HEAD` captured
+- [ ] **raw results JSON copied** — the timestamped JSON file (e.g., `20260402_011142.json`) with every model response. NEVER skip this.
+- [ ] **summary JSON copied** — aggregated metrics summary
+- [ ] **HTML report generated** — interactive viewer saved to `eval-output/report.html`
+- [ ] **progress.md updated** — cycle appended to YAML and markdown body (see below)
+- [ ] **baseline-metrics.md updated** (if merged) — new baseline values
+- [ ] **All artifacts committed to git**
 
-### 4g. Record Cycle Result
+### 4h. Record Cycle Result
 
 Update `.experiments/auto-run-{timestamp}/progress.md` — append to the `cycles` array in the YAML frontmatter:
 
@@ -615,7 +552,7 @@ Also append to the markdown body:
 - **Lesson**: {lesson}
 ```
 
-### 4h. Learn from Failure
+### 4i. Learn from Failure
 
 If the experiment was discarded, quick-rejected, or failed:
 
@@ -654,7 +591,7 @@ Write `.experiments/auto-run-{timestamp}/summary.md`:
 
 ```markdown
 ---
-status: "{achieved|not_achieved|ideas_exhausted|proposals_exhausted|merge_conflict}"
+status: "{achieved|not_achieved|ideas_exhausted|merge_conflict}"
 goal_metric: "{metric_name}"
 goal_target: {value}
 total_cycles: {N}
@@ -738,13 +675,15 @@ If not achieved:
 
 1. **Never modify files on main during a cycle** — all code changes happen in worktrees
 2. **Always preserve ALL experiment artifacts** — merged, discarded, quick-rejected, and failed experiments ALL keep their full artifact directories (idea.md, metrics, logs, diffs, eval output). Nothing is deleted.
-3. **Auto-merge only on improvement** — weighted delta must be strictly positive
-4. **Stop on merge conflicts** — never force-resolve, ask the user
-5. **No duplicate experiments** — track what was tried and don't repeat it
-6. **Feed lessons forward** — each failed cycle's lesson informs the next cycle's proposal
-7. **Quick eval is a heuristic, not absolute** — if it crashes, fall back to full eval
-8. **Log everything** — every decision, every metric, every lesson goes into progress.md
-9. **Commit after every cycle** — even failed experiments get their artifacts committed to git
-10. **Honest reporting** — don't sugarcoat results in the summary. If progress plateaued, say so.
-11. **Proposal mode respects proposal intent** — when using `--from-proposals`, implement what the cloud Claude proposed (guided by `code_changes`), but adapt if the code has changed since the proposal was written.
-12. **Always update proposal status** — in proposal mode, mark each proposal as `implemented` or `rejected` after the cycle, so cloud Claude can track outcomes.
+3. **Never delete worktrees or branches** — after each cycle (merged, discarded, quick-rejected, failed), leave the worktree and branch intact. Only clean up if the user explicitly asks.
+4. **Stack changes on merged experiments** — new experiments start from current main HEAD (which includes all merged experiments). NEVER remove or revert previously merged changes. All changes must be additive.
+5. **Auto-merge only on improvement** — weighted delta must be strictly positive
+6. **Stop on merge conflicts** — never force-resolve, ask the user
+7. **No duplicate experiments** — track what was tried and don't repeat it
+8. **Feed lessons forward** — each failed cycle's lesson informs the next cycle's proposal
+9. **Quick eval is a heuristic, not absolute** — if it crashes, fall back to full eval
+10. **Complete the artifact checklist before every next cycle** — idea.md, metrics.md, quick-metrics.md, changes.diff, eval output, HTML report, progress.md, baseline update, git commit. Never skip artifact updates.
+11. **Generate HTML reports** — if the project has a report generator, always save report.html to eval-output/
+12. **Log everything** — every decision, every metric, every lesson goes into progress.md
+13. **Commit after every cycle** — even failed experiments get their artifacts committed to git
+14. **Honest reporting** — don't sugarcoat results in the summary. If progress plateaued, say so.

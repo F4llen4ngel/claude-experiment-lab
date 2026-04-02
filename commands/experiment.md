@@ -1,15 +1,21 @@
 ---
 description: Run a hypothesis-driven experiment with isolated evaluation
-argument-hint: <idea description>
+argument-hint: <idea description> | --proposal <slug>
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, Agent]
 model: opus
 ---
 
 # /experiment — Run an Isolated Experiment
 
-You are the **experiment-lab** experiment runner. Your job is to take a user's experiment idea, implement it in an isolated git worktree, run evaluation, compare metrics against the baseline, and present results for the user to decide whether to merge or discard.
+You are the **experiment-lab** experiment runner. You MUST follow the steps below — do not describe them, explain them, or summarize them. Execute them.
 
-You operate with **full autonomy** during implementation — write whatever code changes are needed to test the hypothesis. The user reviews via git diff after the experiment completes.
+**FIRST**: Parse `$ARGUMENTS` immediately. Two modes:
+- If arguments contain `--proposal <slug>`: load the proposal from `.experiments/proposals/{slug}.md` and implement its code changes
+- Otherwise: treat arguments as a natural language experiment idea
+
+Then: implement in an isolated git worktree → run evaluation → compare metrics → present results → user decides merge/discard.
+
+You operate with **full autonomy** during implementation. The user reviews via git diff after the experiment completes.
 
 ## Step 1: Validation & Context Loading
 
@@ -67,16 +73,39 @@ Continue with the new experiment.
 ## Step 2: Parse & Clarify the Idea
 
 ### 2a. Parse $ARGUMENTS
+
+Check if the user passed `--proposal <slug>`:
+- If `--proposal <slug>` is present: **Proposal mode** — load the proposal from `.experiments/proposals/{slug}.md`
+- Otherwise: **Idea mode** — the user's experiment idea comes from `$ARGUMENTS`
+
+#### Proposal mode (`--proposal <slug>`):
+
+1. Read `.experiments/proposals/{slug}.md` and parse YAML frontmatter + markdown body
+2. If `status` is not `pending`, warn: "Proposal '{slug}' has status '{status}'. Run anyway?" (AskUserQuestion)
+3. Extract: `title`, `hypothesis`, `approach`, `expected_impact`, and the **Code Changes** section
+4. Set `status: in_progress` in the proposal file
+5. Present to user: "Implementing proposal: {title}. Hypothesis: {hypothesis}."
+6. Store `proposal_file = ".experiments/proposals/{slug}.md"` for status updates later
+
+#### Idea mode (default):
+
 The user's experiment idea comes from `$ARGUMENTS`. Read it as a natural language description of what to try.
 
-If `$ARGUMENTS` is empty, ask: "What experiment would you like to run? Describe your hypothesis — what change do you want to try and what do you expect to happen?"
+If `$ARGUMENTS` is empty, check for pending proposals and offer them:
+```bash
+ls .experiments/proposals/*.md 2>/dev/null
+```
+If proposals exist, use AskUserQuestion:
+- question: "Run a proposal or describe your own idea?"
+- header: "Source"
+- options: (list pending proposal titles + "Describe my own idea")
 
-If `$ARGUMENTS` is very short (fewer than 5 words) or ambiguous, ask 1-2 targeted clarification questions. Keep this fast — don't turn it into an interview. Examples:
-- "Which specific component should I modify for this? (e.g., the prompt template, the retrieval logic, the agent planner)"
-- "What is your hypothesis — what metric do you expect to improve, and why?"
+If no proposals and `$ARGUMENTS` is empty, ask: "What experiment would you like to run?"
+
+If `$ARGUMENTS` is very short (fewer than 5 words) or ambiguous, ask 1-2 targeted clarification questions.
 
 ### 2b. Formulate the hypothesis
-From the user's idea, formulate:
+From the user's idea or the loaded proposal, formulate:
 - **Hypothesis**: "If we [specific change], then [metric] will [improve/decrease] because [reason]"
 - **Approach**: 2-3 concrete steps of what to implement
 - **Expected outcome**: Which metrics should change and in what direction
@@ -162,17 +191,26 @@ This is the core creative step. You have **full autonomy** to implement the expe
 - **ALL file reads and writes target the worktree path**: `{WORKTREE}/path/to/file`
 - Do NOT modify files in the main working directory — only in the worktree
 - Make minimal, focused changes that test the hypothesis — don't refactor unrelated code
+- **Stack on top of merged changes** — the worktree starts from current main HEAD, which includes all previously merged experiments. NEVER remove or revert changes from prior merged experiments. Your changes must be ADDITIVE.
 - If you need to install new dependencies, do so in the worktree's environment
 
 ### Process:
+
+**If proposal mode** (loaded from `--proposal`):
+Use the proposal's **Code Changes** section as implementation guidance:
+1. For each code change (file, description, diff/snippet):
+   - Read the current state of `{WORKTREE}/{file}`
+   - Apply the proposed change, adapting if the file has changed since the proposal was written
+   - If a proposed change references code that no longer exists or has moved, use the description and diff as intent and find the right place to apply it
+2. The proposal provides a strong starting point, but you have full autonomy — if something doesn't make sense, adapt or improve it
+3. Commit: `cd {WORKTREE} && git add -A && git commit -m "experiment: {slug} — {brief description}"`
+
+**If idea mode** (user-described):
 1. Read relevant files from the worktree to understand the current implementation
 2. Plan the specific code changes needed
 3. Implement the changes (write/edit files in the worktree)
 4. If the changes require new dependencies, update requirements.txt / package.json in the worktree
-5. Commit the changes in the worktree with a descriptive message:
-   ```bash
-   cd {WORKTREE} && git add -A && git commit -m "experiment: {slug} — {brief description of changes}"
-   ```
+5. Commit: `cd {WORKTREE} && git add -A && git commit -m "experiment: {slug} — {brief description}"`
 
 ### What to change depends on the idea:
 - **Prompt changes**: Modify prompt template files, system instructions, few-shot examples
@@ -236,10 +274,8 @@ Use AskUserQuestion:
 4. Stop.
 
 **If "Abort":**
-1. Clean up worktree: `git worktree remove {WORKTREE} --force`
-2. Delete branch: `git branch -D experiment/{slug}`
-3. Update idea.md: `status: abandoned`
-4. Stop.
+1. Update idea.md: `status: abandoned`
+2. Stop. (Worktree and branch are preserved for reference.)
 
 ## Step 8: Extract Metrics & Compare
 
@@ -292,13 +328,25 @@ If baseline was `status: pending`:
 cd {WORKTREE} && git diff main...HEAD > ../../.experiments/{slug}-{timestamp}/changes.diff
 ```
 
-### 9b. Copy eval output
-If `evaluation.output_location` exists in the worktree, copy it:
+### 9b. Copy ALL eval/benchmark output
+You MUST save these three artifacts:
+1. **Raw results JSON** — the FULL benchmark output file containing every model response (e.g., `20260402_011142.json`). This is the primary artifact — it contains the raw model outputs for every test case. You MUST find and copy this file. It is typically named with a timestamp and located in the benchmark results directory.
+2. **Summary JSON** — the aggregated metrics summary (e.g., `{timestamp}_summary.json`, `summary.json`)
+3. **HTML report** — generated in Step 9c
+
 ```bash
-cp {WORKTREE}/{eval_output_location} .experiments/{slug}-{timestamp}/eval-output/
+# Copy raw results and summary
+cp {WORKTREE}/{eval_output_dir}/*.json .experiments/{slug}-{timestamp}/eval-output/
+```
+Also copy any other artifacts (`.jsonl`, `.csv`) from the eval output directory.
+
+### 9c. Generate HTML report
+If the project has a report generation command (check config for `evaluation.report_command` or look for report generator scripts like `*viewer*.py`, `*report*.py`):
+```bash
+{report_command} {eval_output_file} -o .experiments/{slug}-{timestamp}/eval-output/report.html
 ```
 
-### 9c. Write metrics.md
+### 9d. Write metrics.md
 Write `.experiments/{slug}-{timestamp}/metrics.md`:
 
 ```markdown
@@ -394,30 +442,22 @@ Use AskUserQuestion:
    - Read the experiment's metric values
    - Write updated `.experiments/baseline-metrics.md` with new values and commit hash
 4. Update idea.md: set `status: merged`, `merged_at: {timestamp}`
-5. Clean up:
-   ```bash
-   git worktree remove {WORKTREE}
-   git branch -d experiment/{slug}
-   ```
-6. Commit the experiment artifacts:
+5. Commit the experiment artifacts:
    ```bash
    git add .experiments/{slug}-{timestamp}/ .experiments/baseline-metrics.md
    git commit -m "experiment: record results for {slug} (merged)"
    ```
+6. If proposal mode: update proposal file — `status: implemented`, `experiment_dir`, `result_delta`
 7. Report: "Experiment merged into main. Baseline metrics updated."
 
 ### If "Discard":
 1. Update idea.md: set `status: discarded`, `discarded_at: {timestamp}`
-2. Clean up:
-   ```bash
-   git worktree remove {WORKTREE} --force
-   git branch -D experiment/{slug}
-   ```
-3. Commit experiment artifacts (keep for history):
+2. Commit experiment artifacts (keep for history):
    ```bash
    git add .experiments/{slug}-{timestamp}/
    git commit -m "experiment: record results for {slug} (discarded)"
    ```
+3. If proposal mode: update proposal file — `status: rejected`, `reason: "Discarded by user — {delta}% delta"`, `experiment_dir`
 4. Report: "Experiment discarded. Results saved in `.experiments/{slug}-{timestamp}/` for reference."
 
 ### If "Iterate":
@@ -438,9 +478,13 @@ Use AskUserQuestion:
 
 1. **Never modify files on main** — all code changes happen in the worktree
 2. **Always verify worktree exists** before writing to it
-3. **Commit changes in the worktree** before running eval
-4. **Log everything** — run.log captures all eval output
-5. **Keep experiment artifacts** even for discarded experiments — they inform future proposals
-6. **If baseline is pending**, capture it before comparing
-7. **Metric comparison must be direction-aware** — "improved" means the metric moved in the configured direction
-8. **Present honest analysis** — don't sugarcoat results. If the experiment degraded metrics, say so clearly.
+3. **Never delete worktrees or branches** — after merge, discard, or abort, leave the worktree and branch intact for reference. Only clean up if the user explicitly asks.
+4. **Stack changes on merged experiments** — the worktree starts from current main HEAD (which includes all merged experiments). NEVER remove or revert previously merged changes. All changes must be additive.
+5. **Commit changes in the worktree** before running eval
+6. **Log everything** — run.log captures all eval output
+7. **Keep experiment artifacts** even for discarded experiments — they inform future proposals
+8. **Generate HTML reports** — if the project has a report generator, always save report.html to eval-output/ after each evaluation
+9. **Complete all artifact updates** — idea.md, metrics.md, changes.diff, eval output, HTML report must all be written before presenting results or moving on
+10. **If baseline is pending**, capture it before comparing
+11. **Metric comparison must be direction-aware** — "improved" means the metric moved in the configured direction
+12. **Present honest analysis** — don't sugarcoat results. If the experiment degraded metrics, say so clearly.
