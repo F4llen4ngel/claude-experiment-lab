@@ -1,0 +1,20 @@
+{
+  "name": "experiment-lab-marketplace",
+  "owner": {
+    "name": "F4llen4ngel"
+  },
+  "metadata": {
+    "description": "Plugin marketplace for hypothesis-driven ML experiment management tools",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "experiment-lab",
+      "source": ".",
+      "description": "Hypothesis-driven ML experiment management for LLM apps and multi-agent systems",
+      "version": "1.0.0",
+      "keywords": ["ml", "experiments", "hypothesis", "evaluation"],
+      "category": "productivity"
+    }
+  ]
+}
